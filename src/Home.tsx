@@ -1,8 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
-import { Transaction } from './types'
+import { Transaction, RecurringBill, Budget, weeklyEquivalent, CADENCE_SHORT, EXPENSE_CATEGORIES } from './types'
 import AddSheet from './AddSheet'
+import RecurringSheet from './RecurringSheet'
+import SavingsChart from './SavingsChart'
+import SettingsSheet from './SettingsSheet'
+import BudgetView from './BudgetView'
+import BudgetSheet from './BudgetSheet'
 
 interface Props {
   session: Session
@@ -34,11 +39,33 @@ function weekSavings(txs: Transaction[]): number {
   return txs.reduce((sum, t) => (t.type === 'income' ? sum + t.amount : sum - t.amount), 0)
 }
 
+type Tab = 'track' | 'budget'
+
 export default function Home({ session }: Props) {
+  const [tab, setTab] = useState<Tab>('track')
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [recurringBills, setRecurringBills] = useState<RecurringBill[]>([])
+  const [budgets, setBudgets] = useState<Budget[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [showRecurring, setShowRecurring] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showBudget, setShowBudget] = useState(false)
+  const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
+  const [editingBill, setEditingBill] = useState<RecurringBill | null>(null)
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deletingBillId, setDeletingBillId] = useState<string | null>(null)
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode')
+    if (saved !== null) return saved === 'true'
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+  })
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode)
+    localStorage.setItem('darkMode', String(darkMode))
+  }, [darkMode])
 
   const fetchTransactions = useCallback(async () => {
     const monday = getMondayOfWeek(new Date())
@@ -57,7 +84,29 @@ export default function Home({ session }: Props) {
     setLoading(false)
   }, [session.user.id])
 
-  useEffect(() => { fetchTransactions() }, [fetchTransactions])
+  const fetchRecurringBills = useCallback(async () => {
+    const { data } = await supabase
+      .from('recurring_bills')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .order('created_at', { ascending: true })
+    setRecurringBills(data ?? [])
+  }, [session.user.id])
+
+  const fetchBudgets = useCallback(async () => {
+    const { data } = await supabase
+      .from('budgets')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .order('created_at', { ascending: true })
+    setBudgets(data ?? [])
+  }, [session.user.id])
+
+  useEffect(() => {
+    fetchTransactions()
+    fetchRecurringBills()
+    fetchBudgets()
+  }, [fetchTransactions, fetchRecurringBills, fetchBudgets])
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('Delete this transaction?')) return
@@ -67,101 +116,209 @@ export default function Home({ session }: Props) {
     setDeletingId(null)
   }
 
+  const handleDeleteBill = async (id: string) => {
+    if (!window.confirm('Delete this recurring bill?')) return
+    setDeletingBillId(id)
+    await supabase.from('recurring_bills').delete().eq('id', id)
+    setRecurringBills(prev => prev.filter(b => b.id !== id))
+    setDeletingBillId(null)
+  }
+
   const now = new Date()
   const thisMonday = getMondayOfWeek(now)
   const thisSunday = new Date(thisMonday)
   thisSunday.setDate(thisMonday.getDate() + 6)
+  const mondayStr = toDateStr(thisMonday)
 
-  const thisWeekTx = transactions.filter(t => t.date >= toDateStr(thisMonday))
+  const thisWeekTx = transactions.filter(t => t.date >= mondayStr)
   const income = thisWeekTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
   const spent = thisWeekTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-  const savings = income - spent
+
+  const totalRecurringWeekly = recurringBills.reduce(
+    (sum, b) => sum + weeklyEquivalent(b.amount, b.cadence), 0
+  )
+
+  const savings = income - spent - totalRecurringWeekly
   const green = savings >= 0
 
   const weekLabel = `${thisMonday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${thisSunday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
 
-  // Past 4 complete weeks dots (oldest → newest, ending last week)
-  const pastWeekDots = Array.from({ length: 4 }, (_, i) => {
+  const weekBars = Array.from({ length: 5 }, (_, i) => {
     const wStart = new Date(thisMonday)
     wStart.setDate(wStart.getDate() - (4 - i) * 7)
     const wEnd = new Date(wStart)
     wEnd.setDate(wStart.getDate() + 6)
     const wTx = transactions.filter(t => t.date >= toDateStr(wStart) && t.date <= toDateStr(wEnd))
-    return weekSavings(wTx) >= 0
+    const net = weekSavings(wTx) - totalRecurringWeekly
+    const label = wStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    return { label, net, isCurrent: i === 4 }
   })
+
+  const unbudgetedCategories = EXPENSE_CATEGORIES.filter(c => !budgets.some(b => b.category === c))
+
+  const openBudgetSheet = (b?: Budget) => {
+    setEditingBudget(b ?? null)
+    setShowBudget(true)
+  }
 
   return (
     <div className="app">
-      <header className="header">
-        <span className="header-logo">L</span>
-        <span className="header-title">Ledger</span>
-        <button className="btn-signout" onClick={() => supabase.auth.signOut()}>Sign out</button>
-      </header>
-
       <main className="main">
-        {/* Weekly Status Card */}
-        <div className={`status-card ${green ? 'status-green' : 'status-red'}`}>
-          <div className="status-label">{green ? '↑ SAVING' : '↓ OVERSPENDING'}</div>
-          <div className="status-amount">
-            {green ? '+' : '−'}{fmt(savings)}
-          </div>
-          <div className="status-week">{weekLabel}</div>
-          <div className="status-breakdown">
-            <span>In: {fmt(income)}</span>
-            <span>Out: {fmt(spent)}</span>
-          </div>
-        </div>
+        {tab === 'track' ? (
+          <>
+            {/* Weekly Status Card */}
+            <div className={`status-card ${green ? 'status-green' : 'status-red'}`}>
+              <div className="status-top">
+                <div className="status-label">{green ? '↑ SAVING' : '↓ OVERSPENDING'} · EFFECTIVE/WK</div>
+                <button className="gear-btn" onClick={() => setShowSettings(true)} aria-label="Settings">
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+              <div className="status-main">
+                <div className="status-left">
+                  <div className="status-amount">{green ? '+' : '−'}{fmt(savings)}</div>
+                  <div className="status-week">{weekLabel}</div>
+                </div>
+                <div className="status-chart">
+                  <SavingsChart bars={weekBars} dark={green || darkMode} mini />
+                </div>
+              </div>
+              <div className="status-breakdown">
+                <span>In: {fmt(income)}</span>
+                <span>Out: {fmt(spent)}</span>
+                {totalRecurringWeekly > 0 && <span>Bills: −{fmt(totalRecurringWeekly)}/wk</span>}
+              </div>
+            </div>
 
-        {/* Past 4 weeks dots */}
-        <div className="week-history">
-          <span className="week-history-label">past 4 weeks</span>
-          <div className="week-dots">
-            {pastWeekDots.map((isGreen, i) => (
-              <span key={i} className={`dot ${isGreen ? 'dot-green' : 'dot-red'}`} title={isGreen ? 'Saved' : 'Overspent'} />
-            ))}
-          </div>
-        </div>
+            {/* Recurring Bills */}
+            <div className="recurring-section">
+              <div className="recurring-header">
+                <h2 className="tx-heading">Recurring Bills</h2>
+                {totalRecurringWeekly > 0 && (
+                  <span className="recurring-total">−{fmt(totalRecurringWeekly)}/wk</span>
+                )}
+              </div>
+              {recurringBills.length > 0 && (
+                <ul className="tx-list">
+                  {recurringBills.map(b => (
+                    <li key={b.id} className="tx-item tx-item-tappable" onClick={() => { setEditingBill(b); setShowRecurring(true) }}>
+                      <div className="tx-left">
+                        <span className="tx-category">{b.name}</span>
+                        <span className="tx-date">{b.category} · {fmt(b.amount)}{CADENCE_SHORT[b.cadence]}</span>
+                      </div>
+                      <div className="tx-right">
+                        <span className="tx-amount expense">≈{fmt(weeklyEquivalent(b.amount, b.cadence))}/wk</span>
+                        <button
+                          className="tx-delete"
+                          onClick={e => { e.stopPropagation(); handleDeleteBill(b.id) }}
+                          disabled={deletingBillId === b.id}
+                          aria-label="Delete"
+                        >×</button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <button className="add-recurring-btn" onClick={() => { setEditingBill(null); setShowRecurring(true) }}>
+                + Add recurring bill
+              </button>
+            </div>
 
-        {/* Transaction list */}
-        <div className="tx-section">
-          <h2 className="tx-heading">Transactions</h2>
-          {loading ? (
-            <p className="tx-empty">Loading…</p>
-          ) : transactions.length === 0 ? (
-            <p className="tx-empty">No transactions yet. Tap + to add one.</p>
-          ) : (
-            <ul className="tx-list">
-              {transactions.map(t => (
-                <li key={t.id} className="tx-item">
-                  <div className="tx-left">
-                    <span className="tx-category">{t.category}</span>
-                    <span className="tx-date">{fmtShort(t.date)}{t.note ? ` · ${t.note}` : ''}</span>
-                  </div>
-                  <div className="tx-right">
-                    <span className={`tx-amount ${t.type}`}>
-                      {t.type === 'income' ? '+' : '−'}{fmt(t.amount)}
-                    </span>
-                    <button
-                      className="tx-delete"
-                      onClick={() => handleDelete(t.id)}
-                      disabled={deletingId === t.id}
-                      aria-label="Delete"
-                    >×</button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+            {/* Transactions */}
+            <div className="tx-section">
+              <h2 className="tx-heading">Transactions</h2>
+              {loading ? (
+                <p className="tx-empty">Loading…</p>
+              ) : transactions.length === 0 ? (
+                <p className="tx-empty">No transactions yet. Tap + to add one.</p>
+              ) : (
+                <ul className="tx-list">
+                  {transactions.map(t => (
+                    <li key={t.id} className="tx-item tx-item-tappable" onClick={() => { setEditingTransaction(t); setShowAdd(true) }}>
+                      <div className="tx-left">
+                        <span className="tx-category">{t.category}</span>
+                        <span className="tx-date">{fmtShort(t.date)}{t.note ? ` · ${t.note}` : ''}</span>
+                      </div>
+                      <div className="tx-right">
+                        <span className={`tx-amount ${t.type}`}>
+                          {t.type === 'income' ? '+' : '−'}{fmt(t.amount)}
+                        </span>
+                        <button
+                          className="tx-delete"
+                          onClick={e => { e.stopPropagation(); handleDelete(t.id) }}
+                          disabled={deletingId === t.id}
+                          aria-label="Delete"
+                        >×</button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        ) : (
+          <BudgetView
+            budgets={budgets}
+            transactions={transactions}
+            mondayStr={mondayStr}
+            weekLabel={weekLabel}
+            onEdit={openBudgetSheet}
+          />
+        )}
       </main>
 
-      <button className="fab" onClick={() => setShowAdd(true)} aria-label="Add transaction">+</button>
+      {/* Tab bar */}
+      <nav className="tab-bar">
+        <button className={`tab-btn${tab === 'track' ? ' active' : ''}`} onClick={() => setTab('track')}>
+          Track
+        </button>
+        <button className={`tab-btn${tab === 'budget' ? ' active' : ''}`} onClick={() => setTab('budget')}>
+          Budget
+        </button>
+      </nav>
+
+      {/* FAB */}
+      <button
+        className="fab"
+        onClick={() => tab === 'track' ? (setEditingTransaction(null), setShowAdd(true)) : openBudgetSheet()}
+        aria-label={tab === 'track' ? 'Add transaction' : 'Add budget'}
+      >+</button>
 
       {showAdd && (
         <AddSheet
           userId={session.user.id}
-          onClose={() => setShowAdd(false)}
-          onSaved={() => { setShowAdd(false); fetchTransactions() }}
+          transaction={editingTransaction ?? undefined}
+          onClose={() => { setShowAdd(false); setEditingTransaction(null) }}
+          onSaved={() => { setShowAdd(false); setEditingTransaction(null); fetchTransactions() }}
+        />
+      )}
+
+      {showRecurring && (
+        <RecurringSheet
+          userId={session.user.id}
+          bill={editingBill ?? undefined}
+          onClose={() => { setShowRecurring(false); setEditingBill(null) }}
+          onSaved={() => { setShowRecurring(false); setEditingBill(null); fetchRecurringBills() }}
+        />
+      )}
+
+      {showSettings && (
+        <SettingsSheet
+          darkMode={darkMode}
+          onDarkMode={setDarkMode}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {showBudget && (
+        <BudgetSheet
+          userId={session.user.id}
+          budget={editingBudget ?? undefined}
+          availableCategories={unbudgetedCategories}
+          onClose={() => { setShowBudget(false); setEditingBudget(null) }}
+          onSaved={() => { setShowBudget(false); setEditingBudget(null); fetchBudgets() }}
         />
       )}
     </div>
