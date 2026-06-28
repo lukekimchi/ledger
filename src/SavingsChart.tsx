@@ -41,9 +41,9 @@ export default function SavingsChart({ bars, dark = false }: Props) {
   const zeroY = toY(0)
   const showZero = zeroY > PT + 2 && zeroY < H - PB - 2
 
-  const lineColor = dark ? 'rgba(255,255,255,0.85)' : 'rgba(13,13,26,0.7)'
-  const dotColor  = dark ? 'white' : '#1B35E8'
-  const zeroColor = dark ? 'rgba(255,255,255,0.12)' : 'rgba(13,13,26,0.1)'
+  const lineColor = 'rgba(255,255,255,0.85)'
+  const dotColor  = 'white'
+  const zeroColor = 'rgba(255,255,255,0.2)'
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
