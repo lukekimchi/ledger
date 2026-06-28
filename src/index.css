@@ -164,7 +164,7 @@ body {
 .status-card {
   background: #1B35E8;
   color: white;
-  padding: 22px 24px 18px;
+  padding: calc(env(safe-area-inset-top, 0px) + 22px) 24px 18px;
 }
 .status-green { background: #1B35E8; }
 .status-red   { background: #1B35E8; }
