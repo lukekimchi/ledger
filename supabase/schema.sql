@@ -1,83 +1,100 @@
--- Run this once in your Supabase project → SQL Editor
+-- Idempotent — safe to run against a database that already has some or all of these objects.
+-- Tables: CREATE IF NOT EXISTS (skipped if present, existing data untouched)
+-- Policies: DROP IF EXISTS then CREATE (always reflects latest definition)
+-- Indexes: CREATE IF NOT EXISTS
 
-create table if not exists public.transactions (
-  id          uuid        default gen_random_uuid() primary key,
-  user_id     uuid        references auth.users(id) on delete cascade not null,
-  type        text        not null check (type in ('income', 'expense')),
-  amount      numeric(10,2) not null check (amount > 0),
-  category    text        not null,
+-- ── Transactions ──────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.transactions (
+  id          uuid          DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id     uuid          REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  type        text          NOT NULL CHECK (type IN ('income', 'expense')),
+  amount      numeric(10,2) NOT NULL CHECK (amount > 0),
+  category    text          NOT NULL,
   note        text,
-  date        date        not null default current_date,
-  created_at  timestamptz default now() not null
+  date        date          NOT NULL DEFAULT current_date,
+  created_at  timestamptz   DEFAULT now() NOT NULL
 );
 
--- Row Level Security: users only see their own rows
-alter table public.transactions enable row level security;
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 
-create policy "select own" on public.transactions
-  for select using (auth.uid() = user_id);
+DROP POLICY IF EXISTS "select own" ON public.transactions;
+CREATE POLICY "select own" ON public.transactions
+  FOR SELECT USING (auth.uid() = user_id);
 
-create policy "insert own" on public.transactions
-  for insert with check (auth.uid() = user_id);
+DROP POLICY IF EXISTS "insert own" ON public.transactions;
+CREATE POLICY "insert own" ON public.transactions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
 
-create policy "update own" on public.transactions
-  for update using (auth.uid() = user_id);
+DROP POLICY IF EXISTS "update own" ON public.transactions;
+CREATE POLICY "update own" ON public.transactions
+  FOR UPDATE USING (auth.uid() = user_id);
 
-create policy "delete own" on public.transactions
-  for delete using (auth.uid() = user_id);
+DROP POLICY IF EXISTS "delete own" ON public.transactions;
+CREATE POLICY "delete own" ON public.transactions
+  FOR DELETE USING (auth.uid() = user_id);
 
--- Index for fast weekly queries
-create index if not exists transactions_user_date
-  on public.transactions (user_id, date desc);
+CREATE INDEX IF NOT EXISTS transactions_user_date
+  ON public.transactions (user_id, date DESC);
 
--- Recurring bills
-create table if not exists public.recurring_bills (
-  id          uuid        default gen_random_uuid() primary key,
-  user_id     uuid        references auth.users(id) on delete cascade not null,
-  name        text        not null,
-  amount      numeric(10,2) not null check (amount > 0),
-  category    text        not null,
-  cadence     text        not null check (cadence in ('weekly', 'fortnightly', 'monthly', 'annually')),
-  created_at  timestamptz default now() not null
+-- ── Recurring bills ───────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.recurring_bills (
+  id          uuid          DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id     uuid          REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name        text          NOT NULL,
+  amount      numeric(10,2) NOT NULL CHECK (amount > 0),
+  category    text          NOT NULL,
+  cadence     text          NOT NULL CHECK (cadence IN ('weekly', 'fortnightly', 'monthly', 'annually')),
+  created_at  timestamptz   DEFAULT now() NOT NULL
 );
 
-alter table public.recurring_bills enable row level security;
+ALTER TABLE public.recurring_bills ENABLE ROW LEVEL SECURITY;
 
-create policy "select own" on public.recurring_bills
-  for select using (auth.uid() = user_id);
+DROP POLICY IF EXISTS "select own" ON public.recurring_bills;
+CREATE POLICY "select own" ON public.recurring_bills
+  FOR SELECT USING (auth.uid() = user_id);
 
-create policy "insert own" on public.recurring_bills
-  for insert with check (auth.uid() = user_id);
+DROP POLICY IF EXISTS "insert own" ON public.recurring_bills;
+CREATE POLICY "insert own" ON public.recurring_bills
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
 
-create policy "update own" on public.recurring_bills
-  for update using (auth.uid() = user_id);
+DROP POLICY IF EXISTS "update own" ON public.recurring_bills;
+CREATE POLICY "update own" ON public.recurring_bills
+  FOR UPDATE USING (auth.uid() = user_id);
 
-create policy "delete own" on public.recurring_bills
-  for delete using (auth.uid() = user_id);
+DROP POLICY IF EXISTS "delete own" ON public.recurring_bills;
+CREATE POLICY "delete own" ON public.recurring_bills
+  FOR DELETE USING (auth.uid() = user_id);
 
-create index if not exists recurring_bills_user
-  on public.recurring_bills (user_id);
+CREATE INDEX IF NOT EXISTS recurring_bills_user
+  ON public.recurring_bills (user_id);
 
--- Weekly budgets per category
-create table if not exists public.budgets (
-  id          uuid        default gen_random_uuid() primary key,
-  user_id     uuid        references auth.users(id) on delete cascade not null,
-  category    text        not null,
-  weekly_amount numeric(10,2) not null check (weekly_amount > 0),
-  created_at  timestamptz default now() not null,
-  unique(user_id, category)
+-- ── Budgets ───────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.budgets (
+  id            uuid          DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id       uuid          REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  category      text          NOT NULL,
+  weekly_amount numeric(10,2) NOT NULL CHECK (weekly_amount > 0),
+  created_at    timestamptz   DEFAULT now() NOT NULL,
+  UNIQUE (user_id, category)
 );
 
-alter table public.budgets enable row level security;
+ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
 
-create policy "select own" on public.budgets
-  for select using (auth.uid() = user_id);
+DROP POLICY IF EXISTS "select own" ON public.budgets;
+CREATE POLICY "select own" ON public.budgets
+  FOR SELECT USING (auth.uid() = user_id);
 
-create policy "insert own" on public.budgets
-  for insert with check (auth.uid() = user_id);
+DROP POLICY IF EXISTS "insert own" ON public.budgets;
+CREATE POLICY "insert own" ON public.budgets
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
 
-create policy "update own" on public.budgets
-  for update using (auth.uid() = user_id);
+DROP POLICY IF EXISTS "update own" ON public.budgets;
+CREATE POLICY "update own" ON public.budgets
+  FOR UPDATE USING (auth.uid() = user_id);
 
-create policy "delete own" on public.budgets
-  for delete using (auth.uid() = user_id);
+DROP POLICY IF EXISTS "delete own" ON public.budgets;
+CREATE POLICY "delete own" ON public.budgets
+  FOR DELETE USING (auth.uid() = user_id);
