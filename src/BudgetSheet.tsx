@@ -55,7 +55,7 @@ export default function BudgetSheet({ userId, budget, availableCategories, onClo
             onChange={e => setAmount(e.target.value)}
             autoFocus
           />
-          <span className="amount-suffix">/wk</span>
+          <span className="amount-suffix">/ wk limit</span>
         </div>
 
         {isEdit ? (
@@ -92,12 +92,12 @@ export default function BudgetSheet({ userId, budget, availableCategories, onClo
           onClick={handleSave}
           disabled={saving || !amount || parseFloat(amount) <= 0}
         >
-          {saving ? '…' : isEdit ? 'Update Budget' : 'Set Budget'}
+          {saving ? '…' : isEdit ? 'Update Limit' : 'Set Limit'}
         </button>
 
         {isEdit && (
           <button className="signout-btn" onClick={handleRemove} disabled={removing}>
-            {removing ? '…' : 'Remove Budget'}
+            {removing ? '…' : 'Remove Limit'}
           </button>
         )}
       </div>

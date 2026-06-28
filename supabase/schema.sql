@@ -49,6 +49,9 @@ create policy "select own" on public.recurring_bills
 create policy "insert own" on public.recurring_bills
   for insert with check (auth.uid() = user_id);
 
+create policy "update own" on public.recurring_bills
+  for update using (auth.uid() = user_id);
+
 create policy "delete own" on public.recurring_bills
   for delete using (auth.uid() = user_id);
 

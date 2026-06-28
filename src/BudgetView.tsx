@@ -16,8 +16,8 @@ export default function BudgetView({ budgets, transactions, mondayStr, weekLabel
   if (budgets.length === 0) {
     return (
       <div className="budget-empty">
-        <p>No budgets set yet.</p>
-        <p>Tap + to set a weekly limit for a category.</p>
+        <p>No limits set yet.</p>
+        <p>Tap + to set a weekly spending limit for a category.</p>
       </div>
     )
   }
@@ -25,8 +25,8 @@ export default function BudgetView({ budgets, transactions, mondayStr, weekLabel
   return (
     <div className="budget-list">
       <div className="budget-week-row">
-        <span className="tx-heading">Budgets</span>
-        <span className="tx-heading">{weekLabel}</span>
+        <span className="tx-heading" style={{ fontSize: '16px', letterSpacing: '-0.02em' }}>Spending Limits</span>
+        <span className="budget-week-label">{weekLabel}</span>
       </div>
 
       {budgets.map(b => {
@@ -43,7 +43,7 @@ export default function BudgetView({ budgets, transactions, mondayStr, weekLabel
             <div className="budget-item-header">
               <span className="budget-cat">{b.category}</span>
               <span className={`budget-remaining ${over ? 'over' : ''}`}>
-                {over ? `${fmt(remaining)} over` : `${fmt(remaining)} left`}
+                {fmt(remaining)}<span className="amount-unit">{over ? ' over limit' : ' left'}</span>
               </span>
             </div>
             <div className="budget-bar-track">
@@ -53,7 +53,7 @@ export default function BudgetView({ budgets, transactions, mondayStr, weekLabel
               />
             </div>
             <div className="budget-item-sub">
-              {fmt(spent)} spent of {fmt(b.weekly_amount)}/wk
+              {fmt(spent)} this week · limit {fmt(b.weekly_amount)}/wk
             </div>
           </div>
         )

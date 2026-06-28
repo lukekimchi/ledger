@@ -16,6 +16,7 @@ export const EXPENSE_CATEGORIES = [
   'Transport',
   'Subscriptions',
   'Bills',
+  'Investments',
   'Tithing',
 ] as const
 
