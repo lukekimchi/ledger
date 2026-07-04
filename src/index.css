@@ -172,6 +172,15 @@ body {
   .status-card {
     padding-top: calc(env(safe-area-inset-top, 0px) + 22px);
   }
+  .recurring-header {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 18px);
+  }
+  .budget-week-row {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 16px);
+  }
+  .budget-empty {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 60px);
+  }
 }
 .status-green { background: #1B35E8; }
 .status-red   { background: #1B35E8; }
