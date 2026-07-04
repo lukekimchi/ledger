@@ -167,14 +167,12 @@ body {
   padding: 22px 24px 18px;
 }
 
-/* Only extend behind the status bar when running as an installed PWA */
-@media (display-mode: standalone) {
-  .status-card {
-    padding-top: calc(env(safe-area-inset-top, 0px) + 22px);
-  }
-  .main-safe-top {
-    padding-top: env(safe-area-inset-top, 0px);
-  }
+/* Extend behind status bar when installed as PWA (detected via window.navigator.standalone) */
+html.standalone .status-card {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 22px);
+}
+html.standalone .main-safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
 }
 .status-green { background: #1B35E8; }
 .status-red   { background: #1B35E8; }
