@@ -133,11 +133,21 @@ body {
 .app {
   max-width: 480px;
   margin: 0 auto;
-  padding-bottom: calc(56px + 88px + var(--safe-bottom));
+  display: flex;
+  flex-direction: column;
+  height: 100svh;
+  overflow: hidden;
 }
 
 /* ── Main ────────────────────────────────── */
-.main { padding: 0; display: flex; flex-direction: column; }
+.main {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 0 88px;
+  display: flex;
+  flex-direction: column;
+}
 
 /* ── Status top row ──────────────────────── */
 .status-top {
@@ -620,10 +630,7 @@ html.standalone .main-safe-top {
 
 /* ── Tab bar ─────────────────────────────── */
 .tab-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  flex-shrink: 0;
   display: flex;
   background: var(--cream);
   border-top: 1px solid var(--border);
