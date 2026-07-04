@@ -81,6 +81,8 @@ CREATE TABLE IF NOT EXISTS public.budgets (
   UNIQUE (user_id, category)
 );
 
+ALTER TABLE public.budgets ADD COLUMN IF NOT EXISTS rollover_reset_week text;
+
 ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "select own" ON public.budgets;

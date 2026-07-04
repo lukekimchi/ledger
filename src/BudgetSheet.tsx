@@ -6,17 +6,20 @@ interface Props {
   userId: string
   budget?: Budget
   availableCategories: readonly string[]
+  rollover?: number
+  mondayStr?: string
   onClose: () => void
   onSaved: () => void
 }
 
-export default function BudgetSheet({ userId, budget, availableCategories, onClose, onSaved }: Props) {
+export default function BudgetSheet({ userId, budget, availableCategories, rollover = 0, mondayStr, onClose, onSaved }: Props) {
   const isEdit = !!budget
   const [category, setCategory] = useState(budget?.category ?? availableCategories[0] ?? '')
   const [customCategory, setCustomCategory] = useState('')
   const [amount, setAmount] = useState(budget ? String(budget.weekly_amount) : '')
   const [saving, setSaving] = useState(false)
   const [removing, setRemoving] = useState(false)
+  const [resetting, setResetting] = useState(false)
 
   const finalCategory = customCategory.trim() || category
 
@@ -36,6 +39,13 @@ export default function BudgetSheet({ userId, budget, availableCategories, onClo
     if (!budget) return
     setRemoving(true)
     await supabase.from('budgets').delete().eq('id', budget.id)
+    onSaved()
+  }
+
+  const handleResetRollover = async () => {
+    if (!budget || !mondayStr) return
+    setResetting(true)
+    await supabase.from('budgets').update({ rollover_reset_week: mondayStr }).eq('id', budget.id)
     onSaved()
   }
 
@@ -94,6 +104,14 @@ export default function BudgetSheet({ userId, budget, availableCategories, onClo
         >
           {saving ? '…' : isEdit ? 'Update Limit' : 'Set Limit'}
         </button>
+
+        {isEdit && rollover !== 0 && (
+          <button className="reset-rollover-btn" onClick={handleResetRollover} disabled={resetting}>
+            {resetting ? '…' : rollover > 0
+              ? `Reset +$${Math.abs(rollover).toFixed(0)} rollover bonus`
+              : `Reset −$${Math.abs(rollover).toFixed(0)} rollover penalty`}
+          </button>
+        )}
 
         {isEdit && (
           <button className="signout-btn" onClick={handleRemove} disabled={removing}>

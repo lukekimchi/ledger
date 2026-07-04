@@ -23,7 +23,10 @@ function getMondayOfWeek(date: Date): Date {
 }
 
 function toDateStr(d: Date): string {
-  return d.toISOString().split('T')[0]
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 function fmt(n: number): string {
@@ -52,6 +55,7 @@ export default function Home({ session }: Props) {
   const [showSettings, setShowSettings] = useState(false)
   const [showBudget, setShowBudget] = useState(false)
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
+  const [editingRollover, setEditingRollover] = useState(0)
   const [editingBill, setEditingBill] = useState<RecurringBill | null>(null)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [addDefaultType, setAddDefaultType] = useState<'expense' | 'income' | 'recurring'>('expense')
@@ -182,8 +186,44 @@ export default function Home({ session }: Props) {
 
   const unbudgetedCategories = EXPENSE_CATEGORIES.filter(c => !budgets.some(b => b.category === c))
 
-  const openBudgetSheet = (b?: Budget) => {
+  type WeekGroup = { key: string; label: string; cats: { category: string; type: 'income' | 'expense'; total: number }[]; net: number; count: number }
+  const [selectedWeek, setSelectedWeek] = useState<WeekGroup | null>(null)
+
+  const pastWeekGroups = (() => {
+    const byWeek = new Map<string, Transaction[]>()
+    for (const t of transactions) {
+      if (t.date >= mondayStr) continue
+      const wMonday = getMondayOfWeek(new Date(t.date + 'T12:00:00'))
+      const key = toDateStr(wMonday)
+      if (!byWeek.has(key)) byWeek.set(key, [])
+      byWeek.get(key)!.push(t)
+    }
+    return [...byWeek.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([key, txs]) => {
+        const wStart = new Date(key + 'T12:00:00')
+        const wEnd = new Date(wStart)
+        wEnd.setDate(wStart.getDate() + 6)
+        const catMap = new Map<string, { type: 'income' | 'expense'; total: number }>()
+        for (const t of txs) {
+          const cKey = `${t.type}::${t.category}`
+          if (!catMap.has(cKey)) catMap.set(cKey, { type: t.type, total: 0 })
+          catMap.get(cKey)!.total += t.amount
+        }
+        const cats = [...catMap.entries()].map(([cKey, v]) => ({
+          category: cKey.split('::')[1],
+          type: v.type,
+          total: v.total,
+        }))
+        const net = txs.reduce((s, t) => t.type === 'income' ? s + t.amount : s - t.amount, 0) - totalRecurringWeekly
+        const label = `${wStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${wEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+        return { key, label, cats, net, count: txs.length }
+      })
+  })()
+
+  const openBudgetSheet = (b?: Budget, rollover = 0) => {
     setEditingBudget(b ?? null)
+    setEditingRollover(rollover)
     setShowBudget(true)
   }
 
@@ -232,7 +272,8 @@ export default function Home({ session }: Props) {
                 <p className="tx-empty">No transactions yet. Tap + to add one.</p>
               ) : (
                 <ul className="tx-list">
-                  {transactions.map(t => (
+                  {/* Current week — individual */}
+                  {thisWeekTx.map(t => (
                     <li key={t.id} className="tx-item tx-item-tappable" onClick={() => { setEditingTransaction(t); setShowAdd(true) }}>
                       <div className="tx-left">
                         <span className="tx-category">{t.category}</span>
@@ -248,6 +289,22 @@ export default function Home({ session }: Props) {
                           disabled={deletingId === t.id}
                           aria-label="Delete"
                         >×</button>
+                      </div>
+                    </li>
+                  ))}
+
+                  {/* Past weeks — tap to open summary modal */}
+                  {pastWeekGroups.map(week => (
+                    <li key={week.key} className="tx-item tx-item-tappable week-summary-row" onClick={() => setSelectedWeek(week)}>
+                      <div className="tx-left">
+                        <span className="tx-category">{week.label}</span>
+                        <span className="tx-date">{week.count} transaction{week.count !== 1 ? 's' : ''}</span>
+                      </div>
+                      <div className="tx-right">
+                        <span className={`tx-amount ${week.net >= 0 ? 'income' : 'expense'}`}>
+                          {week.net >= 0 ? '+' : '−'}{fmt(week.net)}
+                        </span>
+                        <span className="week-chevron">›</span>
                       </div>
                     </li>
                   ))}
@@ -295,7 +352,7 @@ export default function Home({ session }: Props) {
             transactions={transactions}
             mondayStr={mondayStr}
             weekLabel={weekLabel}
-            onEdit={openBudgetSheet}
+            onEdit={(b, rollover) => openBudgetSheet(b, rollover)}
           />
         )}
       </main>
@@ -357,9 +414,55 @@ export default function Home({ session }: Props) {
           userId={session.user.id}
           budget={editingBudget ?? undefined}
           availableCategories={unbudgetedCategories}
+          rollover={editingRollover}
+          mondayStr={mondayStr}
           onClose={() => { setShowBudget(false); setEditingBudget(null) }}
           onSaved={() => { setShowBudget(false); setEditingBudget(null); fetchBudgets() }}
         />
+      )}
+
+      {selectedWeek && (
+        <div className="sheet-overlay" onClick={() => setSelectedWeek(null)}>
+          <div className="sheet week-summary-modal" onClick={e => e.stopPropagation()}>
+            <div className="week-modal-header">
+              <div>
+                <div className="week-modal-title">{selectedWeek.label}</div>
+                <div className="week-modal-sub">{selectedWeek.count} transaction{selectedWeek.count !== 1 ? 's' : ''}</div>
+              </div>
+              <button className="week-modal-close" onClick={() => setSelectedWeek(null)}>×</button>
+            </div>
+            <ul className="tx-list week-modal-list">
+              {selectedWeek.cats.map(cat => (
+                <li key={`${cat.type}-${cat.category}`} className="tx-item">
+                  <div className="tx-left">
+                    <span className="tx-category">{cat.category}</span>
+                  </div>
+                  <div className="tx-right">
+                    <span className={`tx-amount ${cat.type}`}>
+                      {cat.type === 'income' ? '+' : '−'}{fmt(cat.total)}
+                    </span>
+                  </div>
+                </li>
+              ))}
+              {totalRecurringWeekly > 0 && (
+                <li className="tx-item">
+                  <div className="tx-left">
+                    <span className="tx-category">Recurring bills</span>
+                  </div>
+                  <div className="tx-right">
+                    <span className="tx-amount expense">−{fmt(totalRecurringWeekly)}<span className="amount-unit">/wk</span></span>
+                  </div>
+                </li>
+              )}
+            </ul>
+            <div className="week-modal-net">
+              <span>Net</span>
+              <span className={`tx-amount ${selectedWeek.net >= 0 ? 'income' : 'expense'}`}>
+                {selectedWeek.net >= 0 ? '+' : '−'}{fmt(selectedWeek.net)}
+              </span>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

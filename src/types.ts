@@ -53,6 +53,7 @@ export interface Budget {
   user_id: string
   category: string
   weekly_amount: number
+  rollover_reset_week: string | null
   created_at: string
 }
 
