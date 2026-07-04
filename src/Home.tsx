@@ -229,7 +229,7 @@ export default function Home({ session }: Props) {
 
   return (
     <div className="app">
-      <main className="main">
+      <main className={`main${tab !== 'track' ? ' main-safe-top' : ''}`}>
         {tab === 'track' ? (
           <>
             {/* Weekly Status Card */}
